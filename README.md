@@ -45,7 +45,7 @@ You need two endpoints on a machine you control:
 - `LLM_URL`: any OpenAI-compatible `/v1/chat/completions`, such as vLLM or llama.cpp.
 
 > [!WARNING]
-> **A cloud LLM breaks the privacy promise.** If `LLM_URL` points at a hosted API such as DeepSeek or OpenAI, your audio still goes only to your Whisper server, but the text of everything you say in Hindi goes to that provider's cloud. That is the kind of thing this app was built to avoid. It can be a fair trade if you have no server of your own. For private dictation, run the LLM on your own machine. (Hosted APIs also need an API key, which the app does not send yet.)
+> **A cloud LLM breaks the privacy promise.** If `LLM_URL` points at a hosted API such as DeepSeek or OpenAI, your audio still goes only to your Whisper server, but the text of everything you say in Hindi goes to that provider's cloud. That is the kind of thing this app was built to avoid. It can be a fair trade if you have no server of your own. For private dictation, run the LLM on your own machine.
 
 ## Install
 
@@ -81,6 +81,7 @@ foreach ($dir in "Programs", "Programs\Startup") {
 | `STT_KEY` | required | Bearer key for `STT_URL` |
 | `LLM_URL` | required | Chat endpoint used to romanize Hindi |
 | `LLM_MODEL` | `model` | Model name sent to `LLM_URL` |
+| `LLM_KEY` | empty | Bearer key for `LLM_URL`. Only hosted APIs such as DeepSeek or OpenAI need one. See the privacy warning above |
 | `HOTKEY` | `win+space` | Start/stop shortcut. Easiest to set from the tray. Format: modifiers `ctrl`, `alt`, `shift`, `win` joined with `+` to a key (`ctrl+alt+d`), or one key: `ctrl_r`, `alt_r`, `f1`...`f24`, `insert`, `scroll_lock`, `pause` |
 | `SPEECH_RMS` | `0.015` | Mic level that counts as speech. Raise it if pauses are missed in a noisy room |
 | `AUTO_UPDATE` | `1` | `0` turns off update-on-start |

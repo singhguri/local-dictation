@@ -81,6 +81,7 @@ STT_URL = os.environ["STT_URL"]
 STT_KEY = os.environ["STT_KEY"]
 LLM_URL = os.environ["LLM_URL"]
 LLM_MODEL = os.environ.get("LLM_MODEL", "model")
+LLM_KEY = os.environ.get("LLM_KEY", "")  # only hosted APIs need one
 DEFAULT_HOTKEY = "win+space"
 SPEECH_RMS = float(os.environ.get("SPEECH_RMS", "0.015"))  # room noise measured ~0.003
 RATE = 16000
@@ -123,11 +124,16 @@ def transcribe(wav: bytes) -> tuple[str, str]:
 
 def romanize(text: str) -> str:
     """Devanagari -> Roman Hinglish via the OpenAI-compatible LLM at LLM_URL."""
-    r = requests.post(LLM_URL, timeout=30, json={
+    body = {
         "model": LLM_MODEL, "temperature": 0, "max_tokens": 1000,
-        "chat_template_kwargs": {"enable_thinking": False},
         "messages": [{"role": "system", "content": ROMANIZE_PROMPT}, {"role": "user", "content": text}],
-    })
+    }
+    headers = {}
+    if LLM_KEY:
+        headers["Authorization"] = f"Bearer {LLM_KEY}"
+    else:  # self-hosted vLLM: turn off thinking; hosted APIs may reject this unknown field
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+    r = requests.post(LLM_URL, timeout=30, json=body, headers=headers)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"].strip()
 
