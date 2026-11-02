@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 (2026-11-02)
+
+- Optional `LLM_KEY`, sent as a Bearer key to `LLM_URL`, so hosted OpenAI-compatible APIs such as DeepSeek can romanize Hindi. Without a key nothing changes.
+- README warning: a cloud LLM receives the text of everything you say in Hindi.
+
 ## 0.4.1 (2026-11-02)
 
 - Removed the start and stop beeps. The tray dot (red while listening) is the only indicator.
