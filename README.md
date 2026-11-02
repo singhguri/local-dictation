@@ -1,10 +1,12 @@
 # local-dictation
 
-Private live dictation for Windows, built to replace Win+H voice typing. Press Win+Space, talk, and your words are typed into whatever window has focus about a second behind you. Press Win+Space again to stop. Audio goes only to servers you run yourself, never to Microsoft or any other cloud service.
+Private live dictation for Windows, built to replace Win+H voice typing. Press Win+Space, talk, and your words are typed into whatever window has focus about a second behind you. It stops by itself once you have been quiet for a while, or press Win+Space again to stop sooner. Audio goes only to servers you run yourself, never to Microsoft or any other cloud service.
 
 ## Features
 
 **Live typing.** Words appear while you are still talking. Whisper is not a streaming model, so the current phrase is re-transcribed every 0.7 s and a word is typed once two passes in a row agree on it, punctuation included. That way nothing typed ever has to be erased. A pause of 0.8 s ends the phrase, and a phrase is cut at 20 s so re-transcribing stays fast.
+
+**Stops by itself.** You do not have to end a session. After you have spoken, 6 s of silence ends it. Before you say anything it waits 8 s, so you have a moment to start. Normal thinking pauses do not cut you off, and it learns your pace: once you have taken a long pause and kept talking, it waits 1.5 times your longest pause so far, up to 15 s. The last phrase is still typed and the tray dot turns grey. Set `AUTO_STOP_S` in `.env` to wait longer, or `0` to stop only with the shortcut.
 
 **Shortcut you can change.** The default is Win+Space, pressed once to start and once to stop. To change it, right-click the tray dot, choose "Change shortcut...", and press the new keys (Esc cancels). The choice is saved to `HOTKEY` in `.env` and works right away. Two kinds are allowed:
 
@@ -84,6 +86,7 @@ foreach ($dir in "Programs", "Programs\Startup") {
 | `LLM_KEY` | empty | Bearer key for `LLM_URL`. Only hosted APIs such as DeepSeek or OpenAI need one. See the privacy warning above |
 | `HOTKEY` | `win+space` | Start/stop shortcut. Easiest to set from the tray. Format: modifiers `ctrl`, `alt`, `shift`, `win` joined with `+` to a key (`ctrl+alt+d`), or one key: `ctrl_r`, `alt_r`, `f1`...`f24`, `insert`, `scroll_lock`, `pause` |
 | `SPEECH_RMS` | `0.015` | Mic level that counts as speech. Raise it if pauses are missed in a noisy room |
+| `AUTO_STOP_S` | `6` | Seconds of silence after speech that end the session. It can wait longer to match your pauses (see Features). `0` turns auto-stop off |
 | `AUTO_UPDATE` | `1` | `0` turns off update-on-start |
 
 ## Limits

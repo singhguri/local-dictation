@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 (2026-11-02)
+
+- Stops by itself: 6 s of silence after you speak ends the session, 8 s if you never started. Thinking pauses do not cut you off: after a long pause it waits 1.5 times your longest pause so far, up to 15 s. `AUTO_STOP_S` sets the base, `0` turns it off. The shortcut still stops it right away.
+
 ## 0.5.0 (2026-11-02)
 
 - Optional `LLM_KEY`, sent as a Bearer key to `LLM_URL`, so hosted OpenAI-compatible APIs such as DeepSeek can romanize Hindi. Without a key nothing changes.

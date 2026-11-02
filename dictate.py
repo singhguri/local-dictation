@@ -1,6 +1,7 @@
 """Live dictation that types into whatever window has focus as you speak.
 
-Press the shortcut (default Win+Space, changeable from the tray) to start listening, again to stop. Audio goes only
+Press the shortcut (default Win+Space, changeable from the tray) to start listening, again to stop.
+It also stops by itself after a silence longer than your usual pauses (AUTO_STOP_S). Audio goes only
 to your own Whisper server (STT_URL). Whisper is not a streaming model, so the current
 phrase is re-transcribed every INTERIM_S seconds and a word is typed once two passes in a
 row agree on it (punctuation included), which means nothing typed ever has to be erased.
@@ -89,6 +90,7 @@ BLOCK = 1600          # 0.1 s of audio per mic callback
 INTERIM_S = 0.7       # re-transcribe the phrase this often while speaking
 PAUSE_S = 0.8         # this much silence ends a phrase
 MAX_PHRASE_S = 20     # force a phrase end so re-transcription stays cheap
+AUTO_STOP_S = float(os.environ.get("AUTO_STOP_S", "6"))  # silence that ends the session, 0 = never
 
 ROMANIZE_PROMPT = (
     "Transliterate the user's text into Roman-script Hinglish, the way people type it in chat. "
@@ -167,6 +169,8 @@ class Live:
         self.last = ""  # last character typed this session ("" = nothing yet)
         self.peak = 0.0  # loudest block this session, reported when no speech was heard
         self.heard = False
+        self.idle_s = 0.0  # silence since the last speech block, across phrases
+        self.longest_pause_s = 0.0  # longest gap between two bits of speech this session
         self._new_phrase()
 
     def _new_phrase(self):
@@ -182,9 +186,12 @@ class Live:
         rms = float(np.sqrt(np.mean((block.astype(np.float32) / 32768) ** 2)))
         self.peak = max(self.peak, rms)
         if rms >= SPEECH_RMS:
-            self.voiced, self.heard, self.silent_s = True, True, 0.0
+            if self.heard:
+                self.longest_pause_s = max(self.longest_pause_s, self.idle_s)
+            self.voiced, self.heard, self.silent_s, self.idle_s = True, True, 0.0, 0.0
         else:
             self.silent_s += dur
+            self.idle_s += dur
         if not self.voiced:
             self.audio = self.audio[-3:]  # keep a 0.3 s lead-in, drop the silence before it
             return
@@ -193,6 +200,18 @@ class Live:
             self.finish()
         elif self.since_pass >= INTERIM_S:
             self._interim()
+
+    def done_talking(self) -> bool:
+        return AUTO_STOP_S > 0 and self.idle_s + 1e-6 >= self.stop_after_s()  # 0.1 s steps drift below
+
+    def stop_after_s(self) -> float:
+        """Seconds of silence after which the session ends by itself.
+        Inputs: AUTO_STOP_S (the user's setting), self.heard (spoken yet this session?),
+        self.longest_pause_s (longest pause between speech so far)."""
+        if not self.heard:
+            return max(AUTO_STOP_S, 8.0)  # give people a moment to start
+        # Someone who pauses long mid-thought gets more slack, capped so it cannot grow forever.
+        return max(AUTO_STOP_S, min(self.longest_pause_s * 1.5, 15.0))
 
     def _pass(self) -> str:
         self.since_pass = 0.0
@@ -309,6 +328,11 @@ class App:
             while (block := blocks.get()) is not None:
                 live.feed(block)
                 n += 1
+                if live.done_talking():
+                    with self.lock:
+                        if self.stream and self.blocks is blocks:  # still this session, not a newer one
+                            LOG.info("auto-stop after %.1fs of silence", live.idle_s)
+                            self.stop()
             live.finish()
             LOG.info("stopped after %.1fs, peak level %.4f, threshold %.4f, heard speech: %s",
                      n * BLOCK / RATE, live.peak, SPEECH_RMS, live.heard)
