@@ -1,10 +1,12 @@
 # local-dictation
 
-Hold-to-talk dictation for Windows that replaces Win+H voice typing. Hold Right Ctrl, speak, let go, and the text is pasted into whatever window has focus.
+Live dictation for Windows that replaces Win+H voice typing. Tap Right Ctrl to start listening, talk, and the words are typed into whatever window has focus as you speak, about a second behind you. Tap Right Ctrl again to stop.
 
-Audio never goes to Microsoft or any other cloud service. Each clip is sent only to a Whisper server you run yourself, and stays in memory instead of being written to disk. Hindi speech comes back from Whisper in Devanagari, and `finalize()` romanizes it into Hinglish with an LLM you also host.
+Audio never goes to Microsoft or any other cloud service. Audio is sent only to a Whisper server you run yourself, and stays in memory instead of being written to disk. Whisper is not a streaming model, so the current phrase is re-transcribed every 0.7 s and a word is typed once two passes agree on it. Typed text never has to be erased. A pause of 0.8 s ends the phrase. Hindi phrases come back in Devanagari and are romanized into Hinglish by an LLM you also host, then typed when the phrase ends.
 
-Tray icon: grey means idle, red means recording, amber means transcribing.
+Tray icon: grey means idle, red means listening.
+
+Punctuation: Whisper adds it on its own and turns spoken "comma" and "question mark" into symbols. You can also say "full stop", "new line" and "new paragraph". New lines are typed as Shift+Enter so chat apps do not send the message.
 
 ## Server side
 
@@ -21,7 +23,7 @@ uv sync
 uv run pythonw dictate.py
 ```
 
-Taps shorter than 0.4 s and Right Ctrl used as a shortcut (Right Ctrl+C) are ignored. Change the key with `HOTKEY` in `.env`.
+Only a clean tap toggles. Holding Right Ctrl or using it in a shortcut (Right Ctrl+C) does nothing. Change the key with `HOTKEY` in `.env`. If pauses are not detected in a noisy room, raise `SPEECH_RMS` (default 0.015).
 
 ## Start on login
 
@@ -33,5 +35,5 @@ $s.TargetPath = "$PWD\.venv\Scripts\pythonw.exe"; $s.Arguments = "dictate.py"; $
 ## Limits
 
 - The server has to be reachable. If it isn't, you get a tray notification.
-- Pasting goes through the clipboard. If the clipboard held an image, it is not restored afterwards.
+- Text is typed with synthetic keystrokes. Keep the focus in the target window while listening, and avoid typing on the keyboard at the same time.
 - Win+H still works. Turn off Settings > Privacy & security > Speech > Online speech recognition so Windows has no cloud speech path.
