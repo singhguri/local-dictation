@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 (2026-11-02)
+
+- The shortcut can be changed from the tray ("Change shortcut...", Esc cancels) and is saved to `HOTKEY` in `.env`. Combos like Win+Space are swallowed so Windows does not act on them, and lone keys like Right Ctrl toggle on a tap. The default is now Win+Space.
+- Fix: the shortcut could stop working after first use. Opening the mic ran inside the Windows keyboard hook, and Windows silently removes a hook that is slow to answer. The hook now only flips state and does the work on another thread.
+- Start and stop beeps.
+- "Didn't hear you" notification with the mic's peak level when a session never reaches the speech level.
+- `dictation.log` with events and mic levels, never transcripts.
+
 ## 0.3.0 (2026-11-02)
 
 - Auto-update: on start the app pulls the latest `main`, runs `uv sync --locked` and restarts itself. Offline or with local edits it starts the current version, and a failed sync rolls back to the previous commit. `AUTO_UPDATE=0` turns it off.

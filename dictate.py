@@ -1,6 +1,6 @@
 """Live dictation that types into whatever window has focus as you speak.
 
-Tap the hotkey (default Right Ctrl) to start listening, tap again to stop. Audio goes only
+Press the shortcut (default Win+Space, changeable from the tray) to start listening, again to stop. Audio goes only
 to your own Whisper server (STT_URL). Whisper is not a streaming model, so the current
 phrase is re-transcribed every INTERIM_S seconds and a word is typed once two passes in a
 row agree on it (punctuation included), which means nothing typed ever has to be erased.
@@ -8,6 +8,7 @@ A pause ends the phrase. Hindi phrases (Devanagari) are romanized into Hinglish 
 own LLM (LLM_URL) and typed when the phrase ends. On start it updates itself from git.
 """
 import io
+import logging
 import os
 import queue
 import re
@@ -16,6 +17,8 @@ import sys
 import threading
 import time
 import wave
+import winsound
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from dotenv import load_dotenv  # pure Python, so loading it before the update locks nothing
@@ -66,18 +69,26 @@ import sounddevice as sd  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 from pynput import keyboard  # noqa: E402
 
+from hotkey import GlobalHotkey, Hotkey  # noqa: E402
+
+# Events and mic levels only, never what was said.
+LOG = logging.getLogger("dictation")
+LOG.setLevel(logging.INFO)
+_log_file = RotatingFileHandler(HERE / "dictation.log", maxBytes=200_000, backupCount=1, encoding="utf-8")
+_log_file.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+LOG.addHandler(_log_file)
+
 STT_URL = os.environ["STT_URL"]
 STT_KEY = os.environ["STT_KEY"]
 LLM_URL = os.environ["LLM_URL"]
 LLM_MODEL = os.environ.get("LLM_MODEL", "model")
-HOTKEY = getattr(keyboard.Key, os.environ.get("HOTKEY", "ctrl_r"))
+DEFAULT_HOTKEY = "win+space"
 SPEECH_RMS = float(os.environ.get("SPEECH_RMS", "0.015"))  # room noise measured ~0.003
 RATE = 16000
 BLOCK = 1600          # 0.1 s of audio per mic callback
 INTERIM_S = 0.7       # re-transcribe the phrase this often while speaking
 PAUSE_S = 0.8         # this much silence ends a phrase
 MAX_PHRASE_S = 20     # force a phrase end so re-transcription stays cheap
-TAP_S = 0.5           # a press shorter than this (with no other key) toggles listening
 
 ROMANIZE_PROMPT = (
     "Transliterate the user's text into Roman-script Hinglish, the way people type it in chat. "
@@ -149,6 +160,8 @@ class Live:
     def __init__(self, emit):
         self.emit = emit
         self.last = ""  # last character typed this session ("" = nothing yet)
+        self.peak = 0.0  # loudest block this session, reported when no speech was heard
+        self.heard = False
         self._new_phrase()
 
     def _new_phrase(self):
@@ -162,8 +175,9 @@ class Live:
         self.audio.append(block)
         dur = len(block) / RATE
         rms = float(np.sqrt(np.mean((block.astype(np.float32) / 32768) ** 2)))
+        self.peak = max(self.peak, rms)
         if rms >= SPEECH_RMS:
-            self.voiced, self.silent_s = True, 0.0
+            self.voiced, self.heard, self.silent_s = True, True, 0.0
         else:
             self.silent_s += dur
         if not self.voiced:
@@ -238,28 +252,36 @@ def dot(color: str) -> Image.Image:
 IDLE, LISTENING = dot("#8a8a8a"), dot("#e0352b")
 
 
+def save_hotkey(spec: str):
+    """Write HOTKEY into .env, replacing the old line, so the choice survives restarts."""
+    env = HERE / ".env"
+    lines = [ln for ln in env.read_text(encoding="utf-8").splitlines() if not ln.startswith("HOTKEY=")]
+    env.write_text("\n".join([*lines, f"HOTKEY={spec}"]) + "\n", encoding="utf-8")
+
+
+def beep(freq: int):
+    threading.Thread(target=winsound.Beep, args=(freq, 70), daemon=True).start()
+
+
 class App:
-    def __init__(self, icon: pystray.Icon):
+    def __init__(self, icon: pystray.Icon, hotkey: Hotkey):
         self.icon = icon
         self.stream = None
         self.blocks: queue.Queue = queue.Queue()
-        self.pressed_at = None
-        self.combo = False
+        self.lock = threading.Lock()  # start/stop come from the hotkey thread and the worker
+        self.keys = GlobalHotkey(hotkey, self.toggle, self.captured, self.rejected)
+        self.retitle()
 
-    # Hotkey: a clean tap toggles. Holding it or using it in a shortcut (Ctrl+C) does nothing.
-    def on_press(self, key):
-        if key == HOTKEY:
-            if self.pressed_at is None:
-                self.pressed_at, self.combo = time.monotonic(), False
-        elif self.pressed_at is not None:
-            self.combo = True
+    @property
+    def hotkey(self) -> Hotkey:
+        return self.keys.matcher.hotkey
 
-    def on_release(self, key):
-        if key != HOTKEY or self.pressed_at is None:
-            return
-        tap = not self.combo and time.monotonic() - self.pressed_at < TAP_S
-        self.pressed_at = None
-        if tap:
+    def retitle(self):
+        self.icon.title = f"Dictation: {self.hotkey} to start/stop"
+        self.icon.update_menu()
+
+    def toggle(self):
+        with self.lock:
             self.stop() if self.stream else self.start()
 
     def start(self):
@@ -270,6 +292,8 @@ class App:
                                      callback=lambda d, *_: q.put(d[:, 0].copy()))
         self.stream.start()
         self.icon.icon = LISTENING
+        beep(880)
+        LOG.info("listening")
 
     def stop(self):
         self.stream.stop()
@@ -277,28 +301,67 @@ class App:
         self.stream = None
         self.blocks.put(None)  # the worker finishes the last phrase, then exits
         self.icon.icon = IDLE
+        beep(440)
 
     def _worker(self, blocks: queue.Queue):
         # Transcription runs here, never in the audio callback, so the mic never drops blocks.
-        live = Live(type_text)
+        live, started, n = Live(type_text), time.monotonic(), 0
         try:
             while (block := blocks.get()) is not None:
                 live.feed(block)
+                n += 1
             live.finish()
+            LOG.info("stopped after %.1fs, peak level %.4f, threshold %.4f, heard speech: %s",
+                     n * BLOCK / RATE, live.peak, SPEECH_RMS, live.heard)
+            if not live.heard and n * BLOCK / RATE > 1.5:
+                self.icon.notify(f"Your mic peaked at {live.peak:.3f}, below the {SPEECH_RMS:.3f} speech level. "
+                                 "If you were talking, lower SPEECH_RMS in .env.", "Didn't hear you")
         except Exception as e:
+            LOG.exception("failed")
             self.icon.notify(f"{type(e).__name__}: {e}", "Dictation failed")
+            with self.lock:
+                if self.stream:
+                    self.stop()
+
+    def change_shortcut(self):
+        with self.lock:
             if self.stream:
                 self.stop()
+        self.keys.matcher.start_capture()
+        self.icon.notify("Press the new shortcut now. Esc cancels.", "Change shortcut")
+
+    def captured(self, hotkey: Hotkey):
+        save_hotkey(hotkey.spec)
+        self.retitle()
+        LOG.info("shortcut set to %s", hotkey.spec)
+        self.icon.notify(f"Press {hotkey} to start and stop dictation.", "Shortcut saved")
+
+    def rejected(self, why: str):
+        self.icon.notify(why, "Change shortcut")
 
 
 def main():
-    icon = pystray.Icon("dictation", IDLE, f"Dictation (tap {HOTKEY.name} to start/stop)",
-                        menu=pystray.Menu(pystray.MenuItem("Quit", lambda i: i.stop())))
-    app = App(icon)
-    listener = keyboard.Listener(on_press=app.on_press, on_release=app.on_release)
-    listener.start()
-    icon.run()
-    listener.stop()
+    try:
+        hotkey = Hotkey(os.environ.get("HOTKEY", DEFAULT_HOTKEY))
+        bad = None
+    except ValueError as e:
+        hotkey, bad = Hotkey(DEFAULT_HOTKEY), e
+    icon = pystray.Icon("dictation", IDLE, "Dictation")
+    app = App(icon, hotkey)
+    icon.menu = pystray.Menu(
+        pystray.MenuItem(lambda _: f"Shortcut: {app.hotkey}", None, enabled=False),
+        pystray.MenuItem("Change shortcut...", lambda: app.change_shortcut()),
+        pystray.MenuItem("Quit", lambda i: i.stop()),
+    )
+    app.keys.start()
+    LOG.info("started, shortcut %s", hotkey.spec)
+
+    def ready(i):
+        i.visible = True
+        if bad:
+            i.notify(f"HOTKEY in .env is not valid ({bad}). Using {hotkey}.", "Dictation")
+    icon.run(setup=ready)
+    app.keys.stop()
 
 
 if __name__ == "__main__":
