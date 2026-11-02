@@ -94,3 +94,7 @@ foreach ($dir in "Programs", "Programs\Startup") {
 - Win+H still works. Turn off Settings > Privacy & security > Speech > Online speech recognition so Windows has no cloud speech path.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
