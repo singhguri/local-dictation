@@ -5,26 +5,61 @@ to your own Whisper server (STT_URL). Whisper is not a streaming model, so the c
 phrase is re-transcribed every INTERIM_S seconds and a word is typed once two passes in a
 row agree on it (punctuation included), which means nothing typed ever has to be erased.
 A pause ends the phrase. Hindi phrases (Devanagari) are romanized into Hinglish by your
-own LLM (LLM_URL) and typed when the phrase ends.
+own LLM (LLM_URL) and typed when the phrase ends. On start it updates itself from git.
 """
 import io
 import os
 import queue
 import re
+import subprocess
+import sys
 import threading
 import time
 import wave
 from pathlib import Path
 
-import numpy as np
-import pystray
-import requests
-import sounddevice as sd
-from dotenv import load_dotenv
-from PIL import Image, ImageDraw
-from pynput import keyboard
+from dotenv import load_dotenv  # pure Python, so loading it before the update locks nothing
 
-load_dotenv(Path(__file__).with_name(".env"))
+HERE = Path(__file__).resolve().parent
+load_dotenv(HERE / ".env")
+
+
+def self_update() -> None:
+    """Fast-forward to the latest main and restart on the new code.
+
+    Runs before the compiled packages (numpy, sounddevice) load, because Windows will not let
+    uv sync replace files a running process has open. Offline, local edits, or git/uv missing:
+    start the current version. If uv sync fails, go back to the previous commit.
+    """
+    def run(*cmd, timeout=20):
+        return subprocess.run(cmd, cwd=HERE, capture_output=True, text=True, timeout=timeout,
+                              creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        before = run("git", "rev-parse", "HEAD").stdout.strip()
+        if run("git", "pull", "--ff-only", "-q").returncode != 0:
+            return
+        if run("git", "rev-parse", "HEAD").stdout.strip() == before:
+            return
+        if run("uv", "sync", "--locked", "-q", timeout=300).returncode != 0:  # never rewrites uv.lock
+            run("git", "reset", "-q", "--keep", before)
+            return
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    # os.execv mangles paths with spaces on Windows, so start a fresh process and exit this one.
+    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]], cwd=HERE)
+    sys.exit(0)
+
+
+if __name__ == "__main__" and os.environ.get("AUTO_UPDATE", "1") != "0":
+    self_update()
+
+import numpy as np  # noqa: E402  (after the update on purpose, see self_update)
+import pystray  # noqa: E402
+import requests  # noqa: E402
+import sounddevice as sd  # noqa: E402
+from PIL import Image, ImageDraw  # noqa: E402
+from pynput import keyboard  # noqa: E402
+
 STT_URL = os.environ["STT_URL"]
 STT_KEY = os.environ["STT_KEY"]
 LLM_URL = os.environ["LLM_URL"]
