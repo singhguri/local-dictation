@@ -44,6 +44,9 @@ You need two endpoints on a machine you control:
 - `STT_URL`: `POST` multipart `file=<wav>` with `Authorization: Bearer <STT_KEY>`, returning `{"text": ..., "language": ...}`. A small FastAPI app around `faster-whisper` (large-v3-turbo) works. Each pass on a short phrase takes about 0.3 s on a GPU.
 - `LLM_URL`: any OpenAI-compatible `/v1/chat/completions`, such as vLLM or llama.cpp.
 
+> [!WARNING]
+> **A cloud LLM breaks the privacy promise.** If `LLM_URL` points at a hosted API such as DeepSeek or OpenAI, your audio still goes only to your Whisper server, but the text of everything you say in Hindi goes to that provider's cloud. That is the kind of thing this app was built to avoid. It can be a fair trade if you have no server of your own. For private dictation, run the LLM on your own machine. (Hosted APIs also need an API key, which the app does not send yet.)
+
 ## Install
 
 ```
