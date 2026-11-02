@@ -1,0 +1,15 @@
+[project]
+name = "local-dictation"
+version = "0.1.0"
+description = "Hold-to-talk dictation into the focused window, transcribed on your own server"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pillow",
+    "pynput",
+    "pyperclip",
+    "pystray",
+    "python-dotenv",
+    "requests",
+    "sounddevice",
+]
