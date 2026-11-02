@@ -50,8 +50,14 @@ def self_update() -> None:
     sys.exit(0)
 
 
-if __name__ == "__main__" and os.environ.get("AUTO_UPDATE", "1") != "0":
-    self_update()
+if __name__ == "__main__":
+    if os.environ.get("AUTO_UPDATE", "1") != "0":
+        self_update()
+    # One copy only: two would each type every word. The OS frees the mutex when we exit.
+    import ctypes
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "local-dictation-single-instance")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        sys.exit(0)
 
 import numpy as np  # noqa: E402  (after the update on purpose, see self_update)
 import pystray  # noqa: E402
