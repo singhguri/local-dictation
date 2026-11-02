@@ -13,8 +13,6 @@ Private live dictation for Windows, built to replace Win+H voice typing. Press W
 
 Holding a key as push-to-talk is not supported, because typed letters would turn into Ctrl or Win shortcuts while it is down.
 
-**Start and stop sounds.** A high beep means listening started and a low beep means it stopped, so you know the state without looking at the tray.
-
 **Punctuation and voice commands.** Whisper adds punctuation on its own and turns spoken "comma" and "question mark" into symbols. On top of that you can say:
 
 | Say | Typed |

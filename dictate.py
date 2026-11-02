@@ -17,7 +17,6 @@ import sys
 import threading
 import time
 import wave
-import winsound
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -259,10 +258,6 @@ def save_hotkey(spec: str):
     env.write_text("\n".join([*lines, f"HOTKEY={spec}"]) + "\n", encoding="utf-8")
 
 
-def beep(freq: int):
-    threading.Thread(target=winsound.Beep, args=(freq, 70), daemon=True).start()
-
-
 class App:
     def __init__(self, icon: pystray.Icon, hotkey: Hotkey):
         self.icon = icon
@@ -292,7 +287,6 @@ class App:
                                      callback=lambda d, *_: q.put(d[:, 0].copy()))
         self.stream.start()
         self.icon.icon = LISTENING
-        beep(880)
         LOG.info("listening")
 
     def stop(self):
@@ -301,7 +295,6 @@ class App:
         self.stream = None
         self.blocks.put(None)  # the worker finishes the last phrase, then exits
         self.icon.icon = IDLE
-        beep(440)
 
     def _worker(self, blocks: queue.Queue):
         # Transcription runs here, never in the audio callback, so the mic never drops blocks.

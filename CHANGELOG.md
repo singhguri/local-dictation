@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 (2026-11-02)
+
+- Removed the start and stop beeps. The tray dot (red while listening) is the only indicator.
+
 ## 0.4.0 (2026-11-02)
 
 - The shortcut can be changed from the tray ("Change shortcut...", Esc cancels) and is saved to `HOTKEY` in `.env`. Combos like Win+Space are swallowed so Windows does not act on them, and lone keys like Right Ctrl toggle on a tap. The default is now Win+Space.
